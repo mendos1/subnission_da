@@ -1,0 +1,99 @@
+
+#define F_CPU 16000000UL //16MHz
+#define BAUD 9600 //Baud Rate
+#define MYUBRR F_CPU/16/BAUD-1 //calculate Baud
+
+#include <avr/io.h>
+#include <util/delay.h>
+#include <stdio.h>
+#include <avr/interrupt.h>
+
+void READ_ADC(void);  //Read ADC
+void ADC_INIT(void);  //initialize ADC
+void USART_INIT( unsigned int ubrr ); //initialize USART
+void USART_TX_STRING(char *data); //Print String USART
+volatile unsigned int ADC_TEMP;
+char outs[20]; //array
+
+int main(void) {
+	
+	ADC_INIT(); // Initialize the ADC 
+	USART_INIT(MYUBRR); // Initialize the USART 
+	USART_TX_STRING("Connected!\r\n"); // connection with USART
+	_delay_ms(125); // wait a bit
+
+	sei(); //interrupt
+	while(1)
+	{
+	}
+}
+
+void USART_TX_STRING( char *data ) {
+	while ((*data != '\0')) {
+		while (!(UCSR0A & (1 <<UDRE0)));
+		UDR0 = *data;
+		data++;
+	}
+
+
+
+
+/* INIT USART (RS-232) */
+void USART_INIT( unsigned int ubrr ) {
+	UBRR0H = (unsigned char)(ubrr>>8);
+	UBRR0L = (unsigned char)ubrr;
+	UCSR0B = (1 << TXEN0); // Enable receiver, transmitter & RX interrupt
+	UCSR0C = (3 << UCSZ00); //asynchronous 8 N 1
+}
+
+void ADC_INIT(void)
+{
+	
+	ADMUX = (0<<REFS1)| // Reference Selection Bits
+
+	(1<<REFS0)| // AVcc - external cap at AREF
+	(0<<ADLAR)| // ADC Left Adjust Result
+	(1<<MUX2)| // ANalog Channel Selection Bits
+	(0<<MUX1)| //
+	(1<<MUX0);
+
+	ADCSRA = (1<<ADEN)| // ADC ENable
+
+	(0<<ADSC)| // ADC Start Conversion
+	(0<<ADATE)| // ADC Auto Trigger Enable
+	(0<<ADIF)| // ADC Interrupt Flag
+	(0<<ADIE)| // ADC Interrupt Enable
+	(1<<ADPS2)| // ADC Prescaler Select Bits
+	(0<<ADPS1)|
+	(1<<ADPS0);
+
+	// Timer/Counter1 Interrupt Mask Register
+
+	TIMSK1 |= (1<<TOIE1); // enable overflow interrupt
+	TCCR1B |= (1<<CS12)|(1<<CS10); // clock
+	TCNT1 = 49911; //((16MHz/1024)*1)-1 = 15624
+
+}
+
+}
+
+ISR(TIMER1_OVF_vect) //timer overflow interrupt to delay for 1 second
+{
+	READ_ADC();//read ADC
+	snprintf(outs,sizeof(outs),"%3d F \r\n", ADC_TEMP);// print it
+	USART_TX_STRING(outs);
+	TCNT1 = 49911; //reset tcnt 
+}
+
+void READ_ADC(void) {
+	unsigned char i =4;
+	ADC_TEMP = 0; //initialize
+	while (i--) {
+		ADCSRA |= (1<<ADSC);
+		while(ADCSRA & (1<<ADSC));
+		ADC_TEMP+= ADC;
+		_delay_ms(50);
+	}
+	ADC_TEMP = ADC_TEMP/8 ; // Average
+
+}
