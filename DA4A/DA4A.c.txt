@@ -1,0 +1,47 @@
+#define F_CPU 16000000UL	// 16MHz
+#include <avr/io.h>		    //  
+#include <avr/interrupt.h>  // 
+#include <util/delay.h>		// 
+
+void init_adc(void);
+int control;	//  VARIABLE FOR ADC VALUE (NOT NEEDED)
+int toggle = 0; // USED TO DETERMINE IF BUTTON SHOULD BE ON OR OFF
+
+int main()
+{
+	DDRD = 0x40;		// MAKES PD6 AS PWM OUTPUT 
+	DDRB |= (1<<2);		// THIS IS JUST AN LED INDICATOR ON THE MULTIFUNCTION SHILED 
+	PORTB |= (1<<2);	// THIS TURNS IT ON/OFF
+	DDRC = 0x02;		// SET PC0 AS INPUT AND PC1 AS OUTPUT FOR INTERUPTS , LEAVE INT1(PD3) AS INTERRUPT
+	PORTC |= (1<<1);	// ENABLE PULL-UP RESISTOR
+	TCCR0A=0x83;		// FAST PWM // CLEAR OCR0A ON MATCH
+	TCCR0B=0x05;		// SET PRESCALAR TO 1024
+	PCICR = 0x02;		// 0x02 IS PCIE1, THAT IS, ENABLE PCIE1 FOR PCMSK1 TO WORK
+	//PCIFR = 0x02;		// ENABLE PCIF1 INTERRUPT FLAG
+	PCMSK1 = 0x02;		//ENABLE PIN CHANGES ON PCINT9 (PC1)
+
+	sei();				// GLOBAL INTERRUPTS ENABLED
+	ADMUX = (1<<REFS0); // REFERENCE VOLTAGE AT AREF
+	ADCSRA = (1<<ADEN)|(1<<ADSC)|(1<<ADATE)|(1<<ADPS2)|(1<<ADPS1)|(1<<ADPS0);
+	
+	while (1){}
+}
+
+ISR(PCINT1_vect){
+	if(!(PINC & (1<<PINC1))){
+		if(toggle == 0){
+			OCR0A = 0;
+			PORTB &= ~(1<<PORTB2);
+			_delay_ms(1000);
+		}
+		if (toggle == 1){
+			while((ADCSRA&(1<<ADIF))==0); // wait for conversion
+			
+			control = ADC;				  // ADC Conversion
+			OCR0A = control;			  // Output to converted value to 0CR0A
+			PORTB |= 1 << PORTB2;
+			_delay_ms(1000);
+		}
+		toggle ^= 1; //update state of motor to on
+	}
+}
